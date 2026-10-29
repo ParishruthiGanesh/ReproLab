@@ -86,7 +86,10 @@ class Settings:
     data_dir: Path = field(default_factory=lambda: _REPO_ROOT / "data")
     host: str = "127.0.0.1"
     port: int = 8000
-    cors_origins: tuple[str, ...] = ("http://localhost:3000",)
+    cors_origins: tuple[str, ...] = (
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    )
 
     limits: Limits = field(default_factory=Limits)
 
@@ -126,9 +129,14 @@ def load_settings() -> Settings:
     data_dir = Path(_str("REPROLAB_DATA_DIR", str(_REPO_ROOT / "data")))
     if not data_dir.is_absolute():
         data_dir = (_REPO_ROOT / data_dir).resolve()
+    # localhost and 127.0.0.1 are distinct browser origins; allowing only one
+    # breaks the UI depending on which the user typed.
     origins = tuple(
         o.strip()
-        for o in _str("REPROLAB_CORS_ORIGINS", "http://localhost:3000").split(",")
+        for o in _str(
+            "REPROLAB_CORS_ORIGINS",
+            "http://localhost:3000,http://127.0.0.1:3000",
+        ).split(",")
         if o.strip()
     )
     limits = Limits(

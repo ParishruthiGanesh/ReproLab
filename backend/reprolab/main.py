@@ -8,8 +8,9 @@ loses nothing.
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, AsyncIterator, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +46,18 @@ db = Database(settings.db_path)
 log_bus = LogBus()
 worker = Worker(db, settings, log_bus)
 
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Start the background worker with the app, and stop it cleanly."""
+    settings.ensure_dirs()
+    seed_example(db, settings)
+    worker.start()
+    try:
+        yield
+    finally:
+        worker.stop()
+
+
 app = FastAPI(
     title="ReproLab",
     version=__version__,
@@ -52,6 +65,7 @@ app = FastAPI(
         "An AI research engineering agent that prepares, runs and reports on a "
         "reproducibility check, backed by actual execution evidence."
     ),
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,
@@ -211,17 +225,6 @@ def _require_run(run_id: str) -> Any:
     return row
 
 
-# --- lifecycle --------------------------------------------------------------
-@app.on_event("startup")
-def _startup() -> None:
-    settings.ensure_dirs()
-    seed_example(db, settings)
-    worker.start()
-
-
-@app.on_event("shutdown")
-def _shutdown() -> None:
-    worker.stop()
 
 
 # --- system -----------------------------------------------------------------
@@ -534,7 +537,10 @@ def stream_run(run_id: str, after: int = Query(default=0, ge=0)) -> StreamingRes
 
         last_event = after
         last_log = 0
-        deadline = _time.monotonic() + 1800
+        # Bounded so a long-lived stream cannot block a graceful shutdown.
+        # EventSource reconnects on its own, and polling /events is the
+        # authoritative path anyway.
+        deadline = _time.monotonic() + 600
         yield "retry: 2000\n\n"
         while _time.monotonic() < deadline:
             row = db.get_run(run_id)

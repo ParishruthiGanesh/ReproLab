@@ -44,9 +44,11 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         r"\1: " + PLACEHOLDER,
     ),
     (
+        # Matches bare `api_key=...` and JSON-quoted `"api_key": "..."` alike:
+        # the key name may be followed by a closing quote before the separator.
         re.compile(
             r"(?i)\b([a-z0-9_\-]*(?:api[_\-]?key|secret|password|passwd|token))"
-            r"(\s*[:=]\s*)(\"|')?[^\s\"',}]{6,}"
+            r"([\"\']?\s*[:=]\s*)([\"\'])?[^\s\"\',}]{6,}"
         ),
         r"\1\2\3" + PLACEHOLDER,
     ),
